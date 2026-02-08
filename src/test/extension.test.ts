@@ -4,30 +4,12 @@ import * as assert from 'assert';
 // as well as import your extension to test it
 import * as vscode from 'vscode';
 import {
-	parseCommitGenConfigText,
 	parseCommitHeader,
 	validateCommitMessage,
-	type CommitGenRules,
 } from '../core';
 
 suite('Extension Test Suite', () => {
 	vscode.window.showInformationMessage('Start all tests.');
-
-	test('parseCommitGenConfigText: accepts valid config', () => {
-		const cfg = parseCommitGenConfigText(
-			JSON.stringify({
-				scopes: ['ui', 'core'],
-				types: ['feat', 'fix'],
-				rules: { maxSubjectLength: 50, requireScope: true, allowBreakingChange: false },
-				promptHints: 'No emojis.',
-			}),
-			'/repo/.commit-gen.json',
-		);
-
-		assert.deepStrictEqual(cfg.scopes, ['ui', 'core']);
-		assert.deepStrictEqual(cfg.types, ['feat', 'fix']);
-		assert.strictEqual(cfg.promptHints, 'No emojis.');
-	});
 
 	test('parseCommitHeader: parses scoped and unscoped headers', () => {
 		const scoped = parseCommitHeader('feat(ui)!: add button');
@@ -46,12 +28,11 @@ suite('Extension Test Suite', () => {
 	});
 
 	test('validateCommitMessage: enforces allowed type and scope', () => {
-		const rules: CommitGenRules = { maxSubjectLength: 72, requireScope: true, allowBreakingChange: true, subjectCase: 'any' };
 		const ok = validateCommitMessage({
 			message: 'feat(core): add config loader',
 			allowedTypes: ['feat', 'fix'],
 			allowedScopes: ['core', 'ui'],
-			rules,
+			maxSubjectLength: 80,
 		});
 		assert.deepStrictEqual(ok, { ok: true });
 
@@ -59,18 +40,17 @@ suite('Extension Test Suite', () => {
 			message: 'feat(api): add endpoint',
 			allowedTypes: ['feat', 'fix'],
 			allowedScopes: ['core', 'ui'],
-			rules,
+			maxSubjectLength: 80,
 		});
 		assert.strictEqual(badScope.ok, false);
 	});
 
 	test('validateCommitMessage: rejects disallowed type', () => {
-		const rules: CommitGenRules = { maxSubjectLength: 72, requireScope: true, allowBreakingChange: true, subjectCase: 'any' };
 		const res = validateCommitMessage({
 			message: 'feature(core): add thing',
 			allowedTypes: ['feat', 'fix'],
 			allowedScopes: ['core'],
-			rules,
+			maxSubjectLength: 80,
 		});
 		assert.strictEqual(res.ok, false);
 	});

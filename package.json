@@ -21,6 +21,11 @@
         "command": "commit-gen.generateCommitMessage",
         "title": "Commit Gen: Generate Commit Message",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "commit-gen.openOutput",
+        "title": "Commit Gen: Open Output",
+        "icon": "$(output)"
       }
     ],
     "menus": {
@@ -40,6 +45,31 @@
     "configuration": {
       "title": "Commit Gen",
       "properties": {
+        "commitGen.scopes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Allowed scope/area names. If empty, Commit Gen uses a broadly-applicable default list."
+        },
+        "commitGen.types": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Allowed commit types. If empty, Commit Gen uses a default set (feat, fix, chore, docs, refactor, perf, test, build, ci, revert, style)."
+        },
+        "commitGen.promptHints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Extra prompt rules for this workspace. Each entry is appended to the system prompt (style, definitions, conventions, etc.)."
+        },
+        "commitGen.maxSubjectLength": {
+          "type": "number",
+          "default": 80,
+          "minimum": 40,
+          "maximum": 120,
+          "description": "Maximum commit subject length. Default is 80."
+        },
         "commitGen.anthropicApiKey": {
           "type": "string",
           "default": "",
@@ -52,7 +82,7 @@
         },
         "commitGen.maxDiffChars": {
           "type": "number",
-          "default": 12000,
+          "default": 20000,
           "minimum": 1000,
           "maximum": 200000,
           "description": "Maximum number of diff characters to include in the prompt (diff is truncated in the middle)."

@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { anthropicGenerateText, AnthropicError } from './anthropic';
 import { execFile } from 'node:child_process';
@@ -7,26 +6,11 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
-export type CommitGenRules = {
-	maxSubjectLength: number;
-	requireScope: boolean;
-	allowBreakingChange: boolean;
-	subjectCase?: 'lower' | 'sentence' | 'any';
-};
-
-export type CommitGenConfig = {
-	scopes: string[];
-	types?: string[];
-	rules?: Partial<CommitGenRules>;
-	promptHints?: string;
-};
-
 export type CommitGenResolvedConfig = {
 	scopes: string[];
 	types: string[];
-	rules: CommitGenRules;
-	promptHints?: string;
-	configPath: string;
+	promptHints: string[];
+	maxSubjectLength: number;
 };
 
 export type CommitGenSettings = {
@@ -43,15 +27,33 @@ export class UserFacingError extends Error {
 }
 
 const DEFAULT_TYPES = ['feat', 'fix', 'chore', 'docs', 'refactor', 'perf', 'test', 'build', 'ci', 'revert', 'style'];
+const DEFAULT_SCOPES = [
+	'auth',
+	'config',
+	'data',
+	'integrations',
+	'nav',
+	'network',
+	'persistence',
+	'platform',
+	'security',
+	'state',
+	'sync',
+	'ui',
+];
 
-const DEFAULT_RULES: CommitGenRules = {
-	maxSubjectLength: 72,
-	requireScope: true,
-	allowBreakingChange: true,
-	subjectCase: 'any',
-};
+const ALLOW_BREAKING_CHANGE = true;
+const REQUIRE_SCOPE = true;
+
+let activeNotificationCloser: (() => void) | undefined;
+function closeActiveNotification(): void {
+	const closer = activeNotificationCloser;
+	activeNotificationCloser = undefined;
+	closer?.();
+}
 
 export async function runGenerateCommitMessageCommand(): Promise<void> {
+	closeActiveNotification();
 	await vscode.window.withProgress(
 		{
 			location: vscode.ProgressLocation.Notification,
@@ -62,11 +64,11 @@ export async function runGenerateCommitMessageCommand(): Promise<void> {
 			try {
 				const folder = getBestWorkspaceFolder();
 				if (!folder) {
-					throw new UserFacingError('Open a folder/workspace first (Commit Gen needs a workspace root to find `.commit-gen.json`).');
+					throw new UserFacingError('Open a folder/workspace first (Commit Gen needs workspace settings).');
 				}
 
 				progress.report({ message: 'Reading config and changes…' });
-				const resolvedConfig = await loadCommitGenConfig(folder.uri.fsPath);
+				const resolvedConfig = loadCommitGenConfigFromWorkspace(folder);
 				const settings = getCommitGenSettings();
 
 				const git = await getGitContext(folder.uri.fsPath, settings.maxDiffChars);
@@ -92,9 +94,20 @@ export async function runGenerateCommitMessageCommand(): Promise<void> {
 				progress.report({ message: doneMsg });
 				await delay(1200);
 			} catch (err) {
-				const msg = renderTransientError(err);
-				progress.report({ message: `Failed: ${msg}` });
-				await delay(3500);
+				const { notificationText, outputText } = renderError(err);
+				if (outputText) {
+					const out = getOutputChannel();
+					out.appendLine(`[${new Date().toISOString()}] Commit Gen error`);
+					out.appendLine(outputText);
+					out.appendLine('');
+					void offerOpenOutputNotification();
+				}
+
+				// Close the progress notification quickly, then show a sticky error notification
+				// that will be auto-cleared on the next run.
+				progress.report({ message: 'Failed.' });
+				await delay(250);
+				showStickyErrorNotification(notificationText);
 			}
 		},
 	);
@@ -104,16 +117,43 @@ function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function renderTransientError(err: unknown): string {
+function renderError(err: unknown): { notificationText: string; outputText?: string } {
 	if (err instanceof UserFacingError) {
-		return err.message;
+		return { notificationText: err.message };
 	}
 	const e = err instanceof Error ? err : new Error(String(err));
-	const out = getOutputChannel();
-	out.appendLine(`[${new Date().toISOString()}] Commit Gen error`);
-	out.appendLine(e.stack || e.message);
-	out.appendLine('');
-	return 'Unexpected error (see Output: Commit Gen).';
+	return {
+		notificationText: 'Unexpected error (see Output: Commit Gen).',
+		outputText: e.stack || e.message,
+	};
+}
+
+function showStickyErrorNotification(message: string): void {
+	closeActiveNotification();
+	void vscode.window.withProgress(
+		{
+			location: vscode.ProgressLocation.Notification,
+			title: 'Commit Gen Error',
+			cancellable: true,
+		},
+		(progress, token) =>
+			new Promise<void>((resolve) => {
+				activeNotificationCloser = resolve;
+				progress.report({ message });
+				token.onCancellationRequested(() => resolve());
+			}),
+	);
+}
+
+export function showCommitGenOutput(): void {
+	getOutputChannel().show(true);
+}
+
+async function offerOpenOutputNotification(): Promise<void> {
+	const action = await vscode.window.showInformationMessage('Commit Gen: error details are available in Output.', 'Open Output');
+	if (action === 'Open Output') {
+		showCommitGenOutput();
+	}
 }
 
 let outputChannel: vscode.OutputChannel | undefined;
@@ -134,7 +174,7 @@ async function generateWithValidationAndRetry(opts: {
 	const baseSystem = buildSystemPrompt({
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
-		rules: opts.config.rules,
+		maxSubjectLength: opts.config.maxSubjectLength,
 		promptHints: opts.config.promptHints,
 	});
 
@@ -155,14 +195,14 @@ async function generateWithValidationAndRetry(opts: {
 		message: firstNormalized,
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
-		rules: opts.config.rules,
+		maxSubjectLength: opts.config.maxSubjectLength,
 	});
 
 	const v1 = validateCommitMessage({
 		message: firstRepaired,
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
-		rules: opts.config.rules,
+		maxSubjectLength: opts.config.maxSubjectLength,
 	});
 	if (v1.ok) {
 		return firstRepaired;
@@ -194,14 +234,14 @@ async function generateWithValidationAndRetry(opts: {
 		message: secondNormalized,
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
-		rules: opts.config.rules,
+		maxSubjectLength: opts.config.maxSubjectLength,
 	});
 
 	const v2 = validateCommitMessage({
 		message: secondRepaired,
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
-		rules: opts.config.rules,
+		maxSubjectLength: opts.config.maxSubjectLength,
 	});
 	if (v2.ok) {
 		return secondRepaired;
@@ -324,64 +364,51 @@ export function getCommitGenSettings(): CommitGenSettings {
 	return { apiKey, model, maxDiffChars };
 }
 
-export async function loadCommitGenConfig(workspaceRoot: string): Promise<CommitGenResolvedConfig> {
-	const configPath = path.join(workspaceRoot, '.commit-gen.json');
-	let raw: string;
-	try {
-		raw = await fs.readFile(configPath, 'utf8');
-	} catch {
-		throw new UserFacingError(`Missing repo config file: ${configPath}`);
-	}
+function loadCommitGenConfigFromWorkspace(folder: vscode.WorkspaceFolder): CommitGenResolvedConfig {
+	const cfg = vscode.workspace.getConfiguration('commitGen', folder.uri);
+	const scopesRaw = cfg.get<unknown>('scopes');
+	const typesRaw = cfg.get<unknown>('types');
+	const promptHintsRaw = cfg.get<unknown>('promptHints');
+	const maxSubjectLengthRaw = cfg.get<number>('maxSubjectLength');
 
-	const parsed = parseCommitGenConfigText(raw, configPath);
-	const scopes = uniq(parsed.scopes.map((s) => s.trim()).filter(Boolean));
-	if (scopes.length === 0) {
-		throw new UserFacingError(`\`.commit-gen.json\` must include at least 1 scope in \`scopes\` (${configPath}).`);
-	}
+	const scopes = normalizeStringList(scopesRaw);
+	const resolvedScopes = scopes.length > 0 ? scopes : DEFAULT_SCOPES;
 
-	const types = uniq((parsed.types ?? DEFAULT_TYPES).map((t) => t.trim()).filter(Boolean));
-	const rules = { ...DEFAULT_RULES, ...(parsed.rules ?? {}) };
-	rules.maxSubjectLength = clampInt(rules.maxSubjectLength, 20, 120);
+	const types = normalizeStringList(typesRaw);
+	const resolvedTypes = types.length > 0 ? types : DEFAULT_TYPES;
+
+	const promptHints = normalizeStringOrStringList(promptHintsRaw);
 
 	return {
-		scopes,
-		types,
-		rules,
-		promptHints: parsed.promptHints?.trim() || undefined,
-		configPath,
+		scopes: uniq(resolvedScopes),
+		types: uniq(resolvedTypes),
+		promptHints,
+		maxSubjectLength: clampInt(maxSubjectLengthRaw ?? 80, 20, 120),
 	};
 }
 
-export function parseCommitGenConfigText(raw: string, configPath: string): CommitGenConfig {
-	let parsedUnknown: unknown;
-	try {
-		parsedUnknown = JSON.parse(raw) as unknown;
-	} catch (err) {
-		throw new UserFacingError(`Invalid JSON in ${configPath}: ${String(err)}`);
+function normalizeStringOrStringList(value: unknown): string[] {
+	if (typeof value === 'string') {
+		const trimmed = value.trim();
+		return trimmed ? [trimmed] : [];
 	}
+	return normalizeStringList(value);
+}
 
-	if (!parsedUnknown || typeof parsedUnknown !== 'object') {
-		throw new UserFacingError(`Config must be a JSON object: ${configPath}`);
+function normalizeStringList(value: unknown): string[] {
+	if (!Array.isArray(value)) {
+		return [];
 	}
-
-	const parsed = parsedUnknown as Partial<CommitGenConfig>;
-	if (!Array.isArray(parsed.scopes) || !parsed.scopes.every((s) => typeof s === 'string')) {
-		throw new UserFacingError(`Config must include \`scopes\`: string[] (${configPath}).`);
+	const out: string[] = [];
+	for (const item of value) {
+		if (typeof item === 'string') {
+			const trimmed = item.trim();
+			if (trimmed) {
+				out.push(trimmed);
+			}
+		}
 	}
-
-	if (parsed.types !== undefined && (!Array.isArray(parsed.types) || !parsed.types.every((t) => typeof t === 'string'))) {
-		throw new UserFacingError(`If present, \`types\` must be string[] (${configPath}).`);
-	}
-
-	if (parsed.rules !== undefined && (!parsed.rules || typeof parsed.rules !== 'object' || Array.isArray(parsed.rules))) {
-		throw new UserFacingError(`If present, \`rules\` must be an object (${configPath}).`);
-	}
-
-	if (parsed.promptHints !== undefined && typeof parsed.promptHints !== 'string') {
-		throw new UserFacingError(`If present, \`promptHints\` must be a string (${configPath}).`);
-	}
-
-	return parsed as CommitGenConfig;
+	return out;
 }
 
 type GitContext = { diff: string; statusSummary: string; diffKind: 'staged' | 'working' };
@@ -431,15 +458,15 @@ async function execGit(args: string[], cwd: string): Promise<string> {
 function buildSystemPrompt(opts: {
 	allowedTypes: string[];
 	allowedScopes: string[];
-	rules: CommitGenRules;
-	promptHints?: string;
+	maxSubjectLength: number;
+	promptHints: string[];
 }): string {
 	const typeList = opts.allowedTypes.map((t) => `- ${t}`).join('\n');
 	const scopeList = opts.allowedScopes.map((s) => `- ${s}`).join('\n');
-	const scopeRule = opts.rules.requireScope
+	const scopeRule = REQUIRE_SCOPE
 		? 'Scope is REQUIRED. Header MUST be: type(scope)!?: subject'
 		: 'Scope is optional. Header can be: type(scope)!?: subject OR type!?: subject';
-	const breakingRule = opts.rules.allowBreakingChange ? 'Breaking marker "!" is allowed.' : 'Breaking marker "!" is NOT allowed.';
+	const breakingRule = ALLOW_BREAKING_CHANGE ? 'Breaking marker "!" is allowed.' : 'Breaking marker "!" is NOT allowed.';
 
 	const rulesLines = [
 		'You MUST output a valid Conventional Commit message.',
@@ -453,15 +480,14 @@ function buildSystemPrompt(opts: {
 		'',
 		scopeRule,
 		breakingRule,
-		`Subject MUST be imperative mood, concise, and <= ${opts.rules.maxSubjectLength} characters.`,
+		`Subject MUST be imperative mood, concise, and <= ${opts.maxSubjectLength} characters.`,
 	];
 
-	if (opts.rules.subjectCase && opts.rules.subjectCase !== 'any') {
-		rulesLines.push(`Subject casing: ${opts.rules.subjectCase}.`);
-	}
-
-	if (opts.promptHints) {
-		rulesLines.push('', 'Additional project-specific instructions:', opts.promptHints.trim());
+	if (opts.promptHints.length > 0) {
+		rulesLines.push('', 'Additional project-specific rules:');
+		for (const hint of opts.promptHints) {
+			rulesLines.push(`- ${hint}`);
+		}
 	}
 
 	return rulesLines.join('\n');
@@ -517,7 +543,7 @@ export function validateCommitMessage(opts: {
 	message: string;
 	allowedTypes: string[];
 	allowedScopes: string[];
-	rules: CommitGenRules;
+	maxSubjectLength: number;
 }): { ok: true } | { ok: false; reason: string } {
 	const lines = opts.message.replace(/\r\n/g, '\n').split('\n');
 	const headerLine = (lines[0] ?? '').trim();
@@ -530,7 +556,7 @@ export function validateCommitMessage(opts: {
 		return { ok: false, reason: `Type "${parsed.type}" is not in allowed types.` };
 	}
 
-	if (opts.rules.requireScope) {
+	if (REQUIRE_SCOPE) {
 		if (!parsed.scope) {
 			return { ok: false, reason: 'Scope is required but missing.' };
 		}
@@ -541,7 +567,7 @@ export function validateCommitMessage(opts: {
 		return { ok: false, reason: `Scope "${parsed.scope}" is not in allowed scopes.` };
 	}
 
-	if (!opts.rules.allowBreakingChange && parsed.breaking) {
+	if (!ALLOW_BREAKING_CHANGE && parsed.breaking) {
 		return { ok: false, reason: 'Breaking marker is not allowed by rules.' };
 	}
 
@@ -550,8 +576,8 @@ export function validateCommitMessage(opts: {
 	}
 
 	const subjectLen = parsed.subject.length;
-	if (subjectLen > opts.rules.maxSubjectLength) {
-		return { ok: false, reason: `Subject is too long (${subjectLen} > ${opts.rules.maxSubjectLength}).` };
+	if (subjectLen > opts.maxSubjectLength) {
+		return { ok: false, reason: `Subject is too long (${subjectLen} > ${opts.maxSubjectLength}).` };
 	}
 
 	return { ok: true };
@@ -561,13 +587,13 @@ function tryRepairSubjectLengthOnly(opts: {
 	message: string;
 	allowedTypes: string[];
 	allowedScopes: string[];
-	rules: CommitGenRules;
+	maxSubjectLength: number;
 }): string {
 	const validation = validateCommitMessage({
 		message: opts.message,
 		allowedTypes: opts.allowedTypes,
 		allowedScopes: opts.allowedScopes,
-		rules: opts.rules,
+		maxSubjectLength: opts.maxSubjectLength,
 	});
 
 	if (validation.ok) {
@@ -581,11 +607,11 @@ function tryRepairSubjectLengthOnly(opts: {
 		return opts.message;
 	}
 
-	if (parsed.subject.length <= opts.rules.maxSubjectLength) {
+	if (parsed.subject.length <= opts.maxSubjectLength) {
 		return opts.message;
 	}
 
-	const safeSubject = clampSubject(parsed.subject, opts.rules.maxSubjectLength);
+	const safeSubject = clampSubject(parsed.subject, opts.maxSubjectLength);
 	const scopePart = parsed.scope ? `(${parsed.scope})` : '';
 	const breakingPart = parsed.breaking ? '!' : '';
 	const newHeader = `${parsed.type}${scopePart}${breakingPart}: ${safeSubject}`;
