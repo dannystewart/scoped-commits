@@ -1,8 +1,9 @@
 {
   "name": "commit-gen",
-  "displayName": "commit-gen",
+  "displayName": "Commit Gen",
   "description": "AI commit message generator",
   "version": "0.1.0",
+  "icon": "media/icon.png",
   "publisher": "dannystewart",
   "repository": {
     "type": "git",
