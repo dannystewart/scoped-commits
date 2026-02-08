@@ -110,57 +110,6 @@ export async function runGenerateCommitMessageCommand(): Promise<void> {
 	);
 }
 
-export async function runCommitAllAmendAndForcePushCommand(): Promise<void> {
-	closeActiveNotification();
-	await vscode.window.withProgress(
-		{
-			location: vscode.ProgressLocation.Notification,
-			title: 'Commit Gen',
-			cancellable: false,
-		},
-		async (progress) => {
-			try {
-				const folder = getBestWorkspaceFolder();
-				if (!folder) {
-					throw new UserFacingError('Open a folder/workspace first.');
-				}
-
-				const repoRoot = await getRepoRoot(folder.uri.fsPath);
-
-				progress.report({ message: 'Staging all changes…' });
-				await execGit(['add', '-A'], repoRoot);
-
-				progress.report({ message: 'Amending last commit…' });
-				const hasStaged = await hasStagedChanges(repoRoot);
-				if (hasStaged) {
-					await execGit(['commit', '--amend', '--no-edit'], repoRoot);
-				} else {
-					progress.report({ message: 'Nothing new to amend; pushing…' });
-				}
-
-				progress.report({ message: 'Force pushing…' });
-				await execGit(['push', '--force'], repoRoot);
-
-				progress.report({ message: 'Done.' });
-				await delay(900);
-			} catch (err) {
-				const { notificationText, outputText } = renderError(err);
-				if (outputText) {
-					const out = getOutputChannel();
-					out.appendLine(`[${new Date().toISOString()}] Commit Gen error`);
-					out.appendLine(outputText);
-					out.appendLine('');
-					void offerOpenOutputNotification();
-				}
-
-				progress.report({ message: 'Failed.' });
-				await delay(250);
-				showStickyErrorNotification(notificationText);
-			}
-		},
-	);
-}
-
 function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -193,7 +142,7 @@ function showStickyErrorNotification(message: string): void {
 	);
 }
 
-export function showCommitGenOutput(): void {
+function showCommitGenOutput(): void {
 	getOutputChannel().show(true);
 }
 
@@ -489,23 +438,6 @@ async function isGitRepo(cwd: string): Promise<boolean> {
 		}
 		return false;
 	}
-}
-
-async function getRepoRoot(cwd: string): Promise<string> {
-	const inRepo = await isGitRepo(cwd);
-	if (!inRepo) {
-		throw new UserFacingError('This workspace is not a git repository (no `.git`).');
-	}
-	const root = (await execGit(['rev-parse', '--show-toplevel'], cwd)).trim();
-	if (!root) {
-		throw new UserFacingError('Unable to determine git repository root.');
-	}
-	return root;
-}
-
-async function hasStagedChanges(repoRoot: string): Promise<boolean> {
-	const staged = (await execGit(['diff', '--cached', '--name-only'], repoRoot)).trim();
-	return staged.length > 0;
 }
 
 async function execGit(args: string[], cwd: string): Promise<string> {

@@ -41,10 +41,6 @@ The extension will:
 2. Generate a Conventional Commit message using Claude
 3. Insert it into the commit message box
 
-### Commit All (Amend) and Push (Force)
-
-Run **Commit Gen: Git Commit All (Amend) and Push (Force)** from the Command Palette for a complete workflow that stages all changes, amends the last commit, and force-pushes to remote.
-
 ## Configuration
 
 Configure Commit Gen through VS Code/Cursor settings or your workspace's `.vscode/settings.json` -

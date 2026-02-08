@@ -22,16 +22,6 @@
         "command": "commit-gen.generateCommitMessage",
         "title": "Commit Gen: Generate Commit Message",
         "icon": "$(sparkle)"
-      },
-      {
-        "command": "commit-gen.commitAllAmendAndForcePush",
-        "title": "Commit Gen: Git Commit All (Amend) and Push (Force)",
-        "icon": "$(cloud-upload)"
-      },
-      {
-        "command": "commit-gen.openOutput",
-        "title": "Commit Gen: Open Output",
-        "icon": "$(output)"
       }
     ],
     "menus": {
@@ -45,11 +35,6 @@
         {
           "command": "commit-gen.generateCommitMessage",
           "group": "navigation"
-        }
-      ],
-      "commandPalette": [
-        {
-          "command": "commit-gen.commitAllAmendAndForcePush"
         }
       ]
     },
