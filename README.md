@@ -2,14 +2,6 @@
 
 AI-powered commit message generator for VS Code and Cursor that creates high-quality Conventional Commit messages from your git diffs, with the ability to enforce scoping based on predetermined scopes per project.
 
-## Installation
-
-Download the VSIX from GitHub and then open VS Code and go to **Extensions → Install from VSIX**, or you can install via the command line:
-
-```bash
-code --install-extension commit-gen-0.1.0.vsix
-```
-
 ## Features
 
 - **AI-Generated Commit Messages**: Uses Claude to analyze your staged or working changes and generate detailed, structured commit messages
