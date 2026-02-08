@@ -2,6 +2,8 @@
 
 AI-powered commit message generator for VS Code and Cursor that creates high-quality Conventional Commit messages from your git diffs, with the ability to enforce scoping based on predetermined scopes per project.
 
+Available from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=dannystewart.commit-gen).
+
 ## Features
 
 - **AI-Generated Commit Messages**: Uses Claude to analyze your staged or working changes and generate detailed, structured commit messages
