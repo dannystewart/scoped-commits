@@ -11,6 +11,8 @@ export type CommitGenResolvedConfig = {
 	types: string[];
 	promptHints: string[];
 	maxSubjectLength: number;
+	requireScope: boolean;
+	showBreakingChange: boolean;
 };
 
 export type CommitGenSettings = {
@@ -42,8 +44,8 @@ const DEFAULT_SCOPES = [
 	'ui',
 ];
 
-const ALLOW_BREAKING_CHANGE = true;
-const REQUIRE_SCOPE = true;
+const DEFAULT_SHOW_BREAKING_CHANGE = true;
+const DEFAULT_REQUIRE_SCOPE = true;
 
 let activeNotificationCloser: (() => void) | undefined;
 function closeActiveNotification(): void {
@@ -175,6 +177,8 @@ async function generateWithValidationAndRetry(opts: {
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
 		maxSubjectLength: opts.config.maxSubjectLength,
+		requireScope: opts.config.requireScope,
+		showBreakingChange: opts.config.showBreakingChange,
 		promptHints: opts.config.promptHints,
 	});
 
@@ -196,6 +200,8 @@ async function generateWithValidationAndRetry(opts: {
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
 		maxSubjectLength: opts.config.maxSubjectLength,
+		requireScope: opts.config.requireScope,
+		showBreakingChange: opts.config.showBreakingChange,
 	});
 
 	const v1 = validateCommitMessage({
@@ -203,6 +209,8 @@ async function generateWithValidationAndRetry(opts: {
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
 		maxSubjectLength: opts.config.maxSubjectLength,
+		requireScope: opts.config.requireScope,
+		showBreakingChange: opts.config.showBreakingChange,
 	});
 	if (v1.ok) {
 		return firstRepaired;
@@ -235,6 +243,8 @@ async function generateWithValidationAndRetry(opts: {
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
 		maxSubjectLength: opts.config.maxSubjectLength,
+		requireScope: opts.config.requireScope,
+		showBreakingChange: opts.config.showBreakingChange,
 	});
 
 	const v2 = validateCommitMessage({
@@ -242,6 +252,8 @@ async function generateWithValidationAndRetry(opts: {
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
 		maxSubjectLength: opts.config.maxSubjectLength,
+		requireScope: opts.config.requireScope,
+		showBreakingChange: opts.config.showBreakingChange,
 	});
 	if (v2.ok) {
 		return secondRepaired;
@@ -370,6 +382,8 @@ function loadCommitGenConfigFromWorkspace(folder: vscode.WorkspaceFolder): Commi
 	const typesRaw = cfg.get<unknown>('types');
 	const promptHintsRaw = cfg.get<unknown>('promptHints');
 	const maxSubjectLengthRaw = cfg.get<number>('maxSubjectLength');
+	const requireScopeRaw = cfg.get<boolean>('requireScope');
+	const showBreakingChangeRaw = cfg.get<boolean>('showBreakingChange');
 
 	const scopes = normalizeStringList(scopesRaw);
 	const resolvedScopes = scopes.length > 0 ? scopes : DEFAULT_SCOPES;
@@ -384,6 +398,8 @@ function loadCommitGenConfigFromWorkspace(folder: vscode.WorkspaceFolder): Commi
 		types: uniq(resolvedTypes),
 		promptHints,
 		maxSubjectLength: clampInt(maxSubjectLengthRaw ?? 80, 20, 120),
+		requireScope: requireScopeRaw ?? DEFAULT_REQUIRE_SCOPE,
+		showBreakingChange: showBreakingChangeRaw ?? DEFAULT_SHOW_BREAKING_CHANGE,
 	};
 }
 
@@ -459,14 +475,16 @@ function buildSystemPrompt(opts: {
 	allowedTypes: string[];
 	allowedScopes: string[];
 	maxSubjectLength: number;
+	requireScope: boolean;
+	showBreakingChange: boolean;
 	promptHints: string[];
 }): string {
 	const typeList = opts.allowedTypes.map((t) => `- ${t}`).join('\n');
 	const scopeList = opts.allowedScopes.map((s) => `- ${s}`).join('\n');
-	const scopeRule = REQUIRE_SCOPE
+	const scopeRule = opts.requireScope
 		? 'Scope is REQUIRED. Header MUST be: type(scope)!?: subject'
 		: 'Scope is optional. Header can be: type(scope)!?: subject OR type!?: subject';
-	const breakingRule = ALLOW_BREAKING_CHANGE ? 'Breaking marker "!" is allowed.' : 'Breaking marker "!" is NOT allowed.';
+	const breakingRule = opts.showBreakingChange ? 'Breaking marker "!" is allowed.' : 'Breaking marker "!" is NOT allowed.';
 
 	const rulesLines = [
 		'You MUST output a valid Conventional Commit message.',
@@ -544,6 +562,8 @@ export function validateCommitMessage(opts: {
 	allowedTypes: string[];
 	allowedScopes: string[];
 	maxSubjectLength: number;
+	requireScope: boolean;
+	showBreakingChange: boolean;
 }): { ok: true } | { ok: false; reason: string } {
 	const lines = opts.message.replace(/\r\n/g, '\n').split('\n');
 	const headerLine = (lines[0] ?? '').trim();
@@ -556,7 +576,7 @@ export function validateCommitMessage(opts: {
 		return { ok: false, reason: `Type "${parsed.type}" is not in allowed types.` };
 	}
 
-	if (REQUIRE_SCOPE) {
+	if (opts.requireScope) {
 		if (!parsed.scope) {
 			return { ok: false, reason: 'Scope is required but missing.' };
 		}
@@ -567,7 +587,7 @@ export function validateCommitMessage(opts: {
 		return { ok: false, reason: `Scope "${parsed.scope}" is not in allowed scopes.` };
 	}
 
-	if (!ALLOW_BREAKING_CHANGE && parsed.breaking) {
+	if (!opts.showBreakingChange && parsed.breaking) {
 		return { ok: false, reason: 'Breaking marker is not allowed by rules.' };
 	}
 
@@ -588,12 +608,16 @@ function tryRepairSubjectLengthOnly(opts: {
 	allowedTypes: string[];
 	allowedScopes: string[];
 	maxSubjectLength: number;
+	requireScope: boolean;
+	showBreakingChange: boolean;
 }): string {
 	const validation = validateCommitMessage({
 		message: opts.message,
 		allowedTypes: opts.allowedTypes,
 		allowedScopes: opts.allowedScopes,
 		maxSubjectLength: opts.maxSubjectLength,
+		requireScope: opts.requireScope,
+		showBreakingChange: opts.showBreakingChange,
 	});
 
 	if (validation.ok) {

@@ -70,6 +70,16 @@
           "maximum": 120,
           "description": "Maximum commit subject length. Default is 80."
         },
+        "commitGen.requireScope": {
+          "type": "boolean",
+          "default": true,
+          "description": "If true, require Conventional Commit scope: type(scope): subject."
+        },
+        "commitGen.showBreakingChange": {
+          "type": "boolean",
+          "default": true,
+          "description": "If true, show breaking change marker '!': type(scope)!: subject."
+        },
         "commitGen.anthropicApiKey": {
           "type": "string",
           "default": "",

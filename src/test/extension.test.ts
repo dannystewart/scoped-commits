@@ -33,6 +33,8 @@ suite('Extension Test Suite', () => {
 			allowedTypes: ['feat', 'fix'],
 			allowedScopes: ['core', 'ui'],
 			maxSubjectLength: 80,
+			requireScope: true,
+			showBreakingChange: true,
 		});
 		assert.deepStrictEqual(ok, { ok: true });
 
@@ -41,6 +43,8 @@ suite('Extension Test Suite', () => {
 			allowedTypes: ['feat', 'fix'],
 			allowedScopes: ['core', 'ui'],
 			maxSubjectLength: 80,
+			requireScope: true,
+			showBreakingChange: true,
 		});
 		assert.strictEqual(badScope.ok, false);
 	});
@@ -51,6 +55,8 @@ suite('Extension Test Suite', () => {
 			allowedTypes: ['feat', 'fix'],
 			allowedScopes: ['core'],
 			maxSubjectLength: 80,
+			requireScope: true,
+			showBreakingChange: true,
 		});
 		assert.strictEqual(res.ok, false);
 	});
