@@ -16,14 +16,14 @@ suite('Extension Test Suite', () => {
 		assert.ok(scoped);
 		assert.strictEqual(scoped?.type, 'feat');
 		assert.strictEqual(scoped?.scope, 'ui');
-		assert.strictEqual(scoped?.breaking, true);
+		assert.strictEqual(scoped?.bang, true);
 		assert.strictEqual(scoped?.subject, 'add button');
 
 		const unscoped = parseCommitHeader('chore: update deps');
 		assert.ok(unscoped);
 		assert.strictEqual(unscoped?.type, 'chore');
 		assert.strictEqual(unscoped?.scope, undefined);
-		assert.strictEqual(unscoped?.breaking, false);
+		assert.strictEqual(unscoped?.bang, false);
 		assert.strictEqual(unscoped?.subject, 'update deps');
 	});
 
@@ -33,8 +33,6 @@ suite('Extension Test Suite', () => {
 			allowedTypes: ['feat', 'fix'],
 			allowedScopes: ['core', 'ui'],
 			maxSubjectLength: 80,
-			requireScope: true,
-			showBreakingChange: true,
 		});
 		assert.deepStrictEqual(ok, { ok: true });
 
@@ -43,8 +41,6 @@ suite('Extension Test Suite', () => {
 			allowedTypes: ['feat', 'fix'],
 			allowedScopes: ['core', 'ui'],
 			maxSubjectLength: 80,
-			requireScope: true,
-			showBreakingChange: true,
 		});
 		assert.strictEqual(badScope.ok, false);
 	});
@@ -55,8 +51,6 @@ suite('Extension Test Suite', () => {
 			allowedTypes: ['feat', 'fix'],
 			allowedScopes: ['core'],
 			maxSubjectLength: 80,
-			requireScope: true,
-			showBreakingChange: true,
 		});
 		assert.strictEqual(res.ok, false);
 	});

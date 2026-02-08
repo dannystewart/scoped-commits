@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import {
 	runCommitAllAmendAndForcePushCommand,
-	runCommitStagedAmendCommand,
 	runGenerateCommitMessageCommand,
 	showCommitGenOutput,
 } from './core';
@@ -9,10 +8,6 @@ import {
 export function activate(context: vscode.ExtensionContext) {
 	const generate = vscode.commands.registerCommand('commit-gen.generateCommitMessage', async () => {
 		await runGenerateCommitMessageCommand();
-	});
-
-	const commitStagedAmend = vscode.commands.registerCommand('commit-gen.commitStagedAmend', async () => {
-		await runCommitStagedAmendCommand();
 	});
 
 	const commitAllAmendAndForcePush = vscode.commands.registerCommand('commit-gen.commitAllAmendAndForcePush', async () => {
@@ -23,7 +18,7 @@ export function activate(context: vscode.ExtensionContext) {
 		showCommitGenOutput();
 	});
 
-	context.subscriptions.push(generate, commitStagedAmend, commitAllAmendAndForcePush, openOutput);
+	context.subscriptions.push(generate, commitAllAmendAndForcePush, openOutput);
 }
 
 export function deactivate() {}

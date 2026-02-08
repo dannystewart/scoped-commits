@@ -11,8 +11,6 @@ export type CommitGenResolvedConfig = {
 	types: string[];
 	promptHints: string[];
 	maxSubjectLength: number;
-	requireScope: boolean;
-	showBreakingChange: boolean;
 };
 
 export type CommitGenSettings = {
@@ -43,9 +41,6 @@ const DEFAULT_SCOPES = [
 	'sync',
 	'ui',
 ];
-
-const DEFAULT_SHOW_BREAKING_CHANGE = true;
-const DEFAULT_REQUIRE_SCOPE = true;
 
 let activeNotificationCloser: (() => void) | undefined;
 function closeActiveNotification(): void {
@@ -107,51 +102,6 @@ export async function runGenerateCommitMessageCommand(): Promise<void> {
 
 				// Close the progress notification quickly, then show a sticky error notification
 				// that will be auto-cleared on the next run.
-				progress.report({ message: 'Failed.' });
-				await delay(250);
-				showStickyErrorNotification(notificationText);
-			}
-		},
-	);
-}
-
-export async function runCommitStagedAmendCommand(): Promise<void> {
-	closeActiveNotification();
-	await vscode.window.withProgress(
-		{
-			location: vscode.ProgressLocation.Notification,
-			title: 'Commit Gen',
-			cancellable: false,
-		},
-		async (progress) => {
-			try {
-				const folder = getBestWorkspaceFolder();
-				if (!folder) {
-					throw new UserFacingError('Open a folder/workspace first.');
-				}
-
-				progress.report({ message: 'Checking staged changes…' });
-				const repoRoot = await getRepoRoot(folder.uri.fsPath);
-				const hasStaged = await hasStagedChanges(repoRoot);
-				if (!hasStaged) {
-					throw new UserFacingError('No staged changes to amend.');
-				}
-
-				progress.report({ message: 'Amending last commit…' });
-				await execGit(['commit', '--amend', '--no-edit'], repoRoot);
-
-				progress.report({ message: 'Done.' });
-				await delay(900);
-			} catch (err) {
-				const { notificationText, outputText } = renderError(err);
-				if (outputText) {
-					const out = getOutputChannel();
-					out.appendLine(`[${new Date().toISOString()}] Commit Gen error`);
-					out.appendLine(outputText);
-					out.appendLine('');
-					void offerOpenOutputNotification();
-				}
-
 				progress.report({ message: 'Failed.' });
 				await delay(250);
 				showStickyErrorNotification(notificationText);
@@ -273,8 +223,6 @@ async function generateWithValidationAndRetry(opts: {
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
 		maxSubjectLength: opts.config.maxSubjectLength,
-		requireScope: opts.config.requireScope,
-		showBreakingChange: opts.config.showBreakingChange,
 		promptHints: opts.config.promptHints,
 	});
 
@@ -296,8 +244,6 @@ async function generateWithValidationAndRetry(opts: {
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
 		maxSubjectLength: opts.config.maxSubjectLength,
-		requireScope: opts.config.requireScope,
-		showBreakingChange: opts.config.showBreakingChange,
 	});
 
 	const v1 = validateCommitMessage({
@@ -305,8 +251,6 @@ async function generateWithValidationAndRetry(opts: {
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
 		maxSubjectLength: opts.config.maxSubjectLength,
-		requireScope: opts.config.requireScope,
-		showBreakingChange: opts.config.showBreakingChange,
 	});
 	if (v1.ok) {
 		return firstRepaired;
@@ -339,8 +283,6 @@ async function generateWithValidationAndRetry(opts: {
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
 		maxSubjectLength: opts.config.maxSubjectLength,
-		requireScope: opts.config.requireScope,
-		showBreakingChange: opts.config.showBreakingChange,
 	});
 
 	const v2 = validateCommitMessage({
@@ -348,8 +290,6 @@ async function generateWithValidationAndRetry(opts: {
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
 		maxSubjectLength: opts.config.maxSubjectLength,
-		requireScope: opts.config.requireScope,
-		showBreakingChange: opts.config.showBreakingChange,
 	});
 	if (v2.ok) {
 		return secondRepaired;
@@ -478,8 +418,6 @@ function loadCommitGenConfigFromWorkspace(folder: vscode.WorkspaceFolder): Commi
 	const typesRaw = cfg.get<unknown>('types');
 	const promptHintsRaw = cfg.get<unknown>('promptHints');
 	const maxSubjectLengthRaw = cfg.get<number>('maxSubjectLength');
-	const requireScopeRaw = cfg.get<boolean>('requireScope');
-	const showBreakingChangeRaw = cfg.get<boolean>('showBreakingChange');
 
 	const scopes = normalizeStringList(scopesRaw);
 	const resolvedScopes = scopes.length > 0 ? scopes : DEFAULT_SCOPES;
@@ -494,8 +432,6 @@ function loadCommitGenConfigFromWorkspace(folder: vscode.WorkspaceFolder): Commi
 		types: uniq(resolvedTypes),
 		promptHints,
 		maxSubjectLength: clampInt(maxSubjectLengthRaw ?? 80, 20, 120),
-		requireScope: requireScopeRaw ?? DEFAULT_REQUIRE_SCOPE,
-		showBreakingChange: showBreakingChangeRaw ?? DEFAULT_SHOW_BREAKING_CHANGE,
 	};
 }
 
@@ -588,16 +524,10 @@ function buildSystemPrompt(opts: {
 	allowedTypes: string[];
 	allowedScopes: string[];
 	maxSubjectLength: number;
-	requireScope: boolean;
-	showBreakingChange: boolean;
 	promptHints: string[];
 }): string {
 	const typeList = opts.allowedTypes.map((t) => `- ${t}`).join('\n');
 	const scopeList = opts.allowedScopes.map((s) => `- ${s}`).join('\n');
-	const scopeRule = opts.requireScope
-		? 'Scope is REQUIRED. Header MUST be: type(scope)!?: subject'
-		: 'Scope is optional. Header can be: type(scope)!?: subject OR type!?: subject';
-	const breakingRule = opts.showBreakingChange ? 'Breaking marker "!" is allowed.' : 'Breaking marker "!" is NOT allowed.';
 
 	const rulesLines = [
 		'You MUST output a valid Conventional Commit message.',
@@ -609,8 +539,7 @@ function buildSystemPrompt(opts: {
 		'You MUST choose a scope ONLY from this allowed list:',
 		scopeList,
 		'',
-		scopeRule,
-		breakingRule,
+		'Scope is REQUIRED. Header MUST be: type(scope): subject',
 		`Subject MUST be imperative mood, concise, and <= ${opts.maxSubjectLength} characters.`,
 		'Body should use third-person singular present tense ("adds", not "add") and may be omitted for trivial changes.',
 	];
@@ -642,7 +571,7 @@ function buildUserPrompt(opts: { status: string; diff: string; diffKind: 'staged
 export type ParsedCommitHeader = {
 	type: string;
 	scope?: string;
-	breaking: boolean;
+	bang: boolean;
 	subject: string;
 };
 
@@ -653,7 +582,7 @@ export function parseCommitHeader(line: string): ParsedCommitHeader | null {
 		return {
 			type: mWithScope[1] ?? '',
 			scope: mWithScope[2] ?? '',
-			breaking: Boolean(mWithScope[3]),
+			bang: Boolean(mWithScope[3]),
 			subject: (mWithScope[4] ?? '').trim(),
 		};
 	}
@@ -663,7 +592,7 @@ export function parseCommitHeader(line: string): ParsedCommitHeader | null {
 		return {
 			type: mNoScope[1] ?? '',
 			scope: undefined,
-			breaking: Boolean(mNoScope[2]),
+			bang: Boolean(mNoScope[2]),
 			subject: (mNoScope[3] ?? '').trim(),
 		};
 	}
@@ -676,8 +605,6 @@ export function validateCommitMessage(opts: {
 	allowedTypes: string[];
 	allowedScopes: string[];
 	maxSubjectLength: number;
-	requireScope: boolean;
-	showBreakingChange: boolean;
 }): { ok: true } | { ok: false; reason: string } {
 	const lines = opts.message.replace(/\r\n/g, '\n').split('\n');
 	const headerLine = (lines[0] ?? '').trim();
@@ -690,19 +617,11 @@ export function validateCommitMessage(opts: {
 		return { ok: false, reason: `Type "${parsed.type}" is not in allowed types.` };
 	}
 
-	if (opts.requireScope) {
-		if (!parsed.scope) {
-			return { ok: false, reason: 'Scope is required but missing.' };
-		}
-		if (!opts.allowedScopes.includes(parsed.scope)) {
-			return { ok: false, reason: `Scope "${parsed.scope}" is not in allowed scopes.` };
-		}
-	} else if (parsed.scope && !opts.allowedScopes.includes(parsed.scope)) {
-		return { ok: false, reason: `Scope "${parsed.scope}" is not in allowed scopes.` };
+	if (!parsed.scope) {
+		return { ok: false, reason: 'Scope is required but missing.' };
 	}
-
-	if (!opts.showBreakingChange && parsed.breaking) {
-		return { ok: false, reason: 'Breaking marker is not allowed by rules.' };
+	if (!opts.allowedScopes.includes(parsed.scope)) {
+		return { ok: false, reason: `Scope "${parsed.scope}" is not in allowed scopes.` };
 	}
 
 	if (!parsed.subject) {
@@ -722,16 +641,12 @@ function tryRepairSubjectLengthOnly(opts: {
 	allowedTypes: string[];
 	allowedScopes: string[];
 	maxSubjectLength: number;
-	requireScope: boolean;
-	showBreakingChange: boolean;
 }): string {
 	const validation = validateCommitMessage({
 		message: opts.message,
 		allowedTypes: opts.allowedTypes,
 		allowedScopes: opts.allowedScopes,
 		maxSubjectLength: opts.maxSubjectLength,
-		requireScope: opts.requireScope,
-		showBreakingChange: opts.showBreakingChange,
 	});
 
 	if (validation.ok) {
@@ -751,8 +666,8 @@ function tryRepairSubjectLengthOnly(opts: {
 
 	const safeSubject = clampSubject(parsed.subject, opts.maxSubjectLength);
 	const scopePart = parsed.scope ? `(${parsed.scope})` : '';
-	const breakingPart = parsed.breaking ? '!' : '';
-	const newHeader = `${parsed.type}${scopePart}${breakingPart}: ${safeSubject}`;
+	const bangPart = parsed.bang ? '!' : '';
+	const newHeader = `${parsed.type}${scopePart}${bangPart}: ${safeSubject}`;
 	const rest = lines.slice(1).join('\n').trimEnd();
 	return rest ? `${newHeader}\n${rest}`.trimEnd() : newHeader;
 }

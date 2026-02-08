@@ -8,7 +8,6 @@ AI-powered commit message generator for VS Code and Cursor that creates high-qua
 - **Conventional Commits**: Enforces the Conventional Commits format with customizable types and scopes
 - **Smart Validation**: Validates generated messages and automatically retries if they don't meet your project's standards
 - **Flexible Configuration**: Customize commit types, scopes, subject length, and add project-specific prompt hints
-- **One-Click Actions**: Generate messages, amend commits, and force-push with single commands
 - **Workspace-Aware**: Automatically detects the active workspace and git repository
 
 ## Usage
@@ -27,10 +26,9 @@ The extension will:
 2. Generate a Conventional Commit message using Claude
 3. Insert it into the commit message box
 
-### Other Commands (Command Palette)
+### Commit All (Amend) and Push (Force)
 
-- Run **Commit Gen: Commit Staged (Amend)** to quickly amend your last commit with staged changes.
-- Run **Commit Gen: Git Commit All (Amend) and Push (Force)** from the Command Palette for a complete workflow that stages all changes, amends the last commit, and force-pushes to remote.
+Run **Commit Gen: Git Commit All (Amend) and Push (Force)** from the Command Palette for a complete workflow that stages all changes, amends the last commit, and force-pushes to remote.
 
 ## Configuration
 
@@ -49,8 +47,6 @@ Configure Commit Gen through VS Code/Cursor settings or your workspace's `.vscod
 - `commitGen.scopes` - Allowed scope/area names
   - Default: auth, config, data, integrations, nav, network, persistence, platform, security, state, sync, ui
 - `commitGen.maxSubjectLength` - Maximum commit subject length (default: 80, range: 40-120)
-- `commitGen.requireScope` - Require a scope in commit messages (default: true)
-- `commitGen.showBreakingChange` - Allow breaking change marker ! (default: true)
 
 ### Project-Specific Rules
 
@@ -63,7 +59,6 @@ Configure Commit Gen through VS Code/Cursor settings or your workspace's `.vscod
   "commitGen.types": ["feat", "fix", "docs", "refactor"],
   "commitGen.scopes": ["api", "ui", "db", "auth"],
   "commitGen.maxSubjectLength": 72,
-  "commitGen.requireScope": true,
   "commitGen.promptHints": [
     "Use past tense for database migrations",
     "Reference ticket numbers when available"
