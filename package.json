@@ -1,8 +1,8 @@
 {
   "name": "scoped-commits",
   "displayName": "Scoped Commits",
-  "description": "Generate AI commit messages with defined scopes per workspace",
-  "version": "0.2.0",
+  "description": "Generate AI commit messages with predefined scopes",
+  "version": "0.2.1",
   "icon": "media/icon.png",
   "publisher": "dannystewart",
   "repository": {
@@ -22,6 +22,14 @@
         "command": "scoped-commits.generateCommitMessage",
         "title": "Scoped Commits: Generate Commit Message",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "scoped-commits.addScopeGlobal",
+        "title": "Scoped Commits: Add Scope (Global)"
+      },
+      {
+        "command": "scoped-commits.addScopeWorkspace",
+        "title": "Scoped Commits: Add Scope (Workspace)"
       }
     ],
     "menus": {
