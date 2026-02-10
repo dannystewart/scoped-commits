@@ -44,14 +44,14 @@
         "commitGen.scopes": {
           "type": "array",
           "items": { "type": "string" },
-          "default": [],
-          "description": "Allowed scope/area names. If empty, Commit Gen uses a broadly-applicable default list."
+          "default": ["auth", "config", "data", "network", "platform", "security", "state", "sync", "ui"],
+          "description": "Allowed scope/area names. Defaults to a broadly-applicable list; use \"Reset This Setting\" to restore defaults."
         },
         "commitGen.types": {
           "type": "array",
           "items": { "type": "string" },
-          "default": [],
-          "description": "Allowed commit types. If empty, Commit Gen uses a default set (feat, fix, chore, docs, refactor, perf, test, build, ci, revert, style)."
+          "default": ["feat", "fix", "chore", "docs", "refactor", "perf", "test", "build", "ci", "revert", "style"],
+          "description": "Allowed commit types. Defaults to a standard Conventional Commits set; use \"Reset This Setting\" to restore defaults."
         },
         "commitGen.promptHints": {
           "type": "array",

@@ -26,32 +26,6 @@ export class UserFacingError extends Error {
 	}
 }
 
-const DEFAULT_TYPES = [
-	'feat',
-	'fix',
-	'chore',
-	'docs',
-	'refactor',
-	'perf',
-	'test',
-	'build',
-	'ci',
-	'revert',
-	'style',
-
-];
-const DEFAULT_SCOPES = [
-	'auth',
-	'config',
-	'data',
-	'network',
-	'platform',
-	'security',
-	'state',
-	'sync',
-	'ui',
-];
-
 let activeNotificationCloser: (() => void) | undefined;
 function closeActiveNotification(): void {
 	const closer = activeNotificationCloser;
@@ -379,16 +353,20 @@ function loadCommitGenConfigFromWorkspace(folder: vscode.WorkspaceFolder): Commi
 	const maxSubjectLengthRaw = cfg.get<number>('maxSubjectLength');
 
 	const scopes = normalizeStringList(scopesRaw);
-	const resolvedScopes = scopes.length > 0 ? scopes : DEFAULT_SCOPES;
+	if (scopes.length === 0) {
+		throw new UserFacingError('`commitGen.scopes` is empty. Add at least one scope, or use "Reset This Setting" to restore defaults.');
+	}
 
 	const types = normalizeStringList(typesRaw);
-	const resolvedTypes = types.length > 0 ? types : DEFAULT_TYPES;
+	if (types.length === 0) {
+		throw new UserFacingError('`commitGen.types` is empty. Add at least one type, or use "Reset This Setting" to restore defaults.');
+	}
 
 	const promptHints = normalizeStringOrStringList(promptHintsRaw);
 
 	return {
-		scopes: uniq(resolvedScopes),
-		types: uniq(resolvedTypes),
+		scopes: uniq(scopes),
+		types: uniq(types),
 		promptHints,
 		maxSubjectLength: clampInt(maxSubjectLengthRaw ?? 80, 20, 120),
 	};
