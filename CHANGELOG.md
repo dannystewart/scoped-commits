@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## [Unreleased]
 
+## [0.2.0] (2026-02-10)
+
+Changed extension name from **Commit Gen** to the more representative **Scoped Commits** to reflect the primary feature.
+
+### Added
+
+- Adds instruction to system prompt preventing Markdown formatting and line breaks in generated commit messages to ensure plain text output.
+
+### Changed
+
+- Changes extension name from "commit-gen" to "scoped-commits" with updated configuration keys (`scopedCommits.*`), command identifiers, and documentation.
+- Changes default commit types and scopes to be configurable in `package.json` instead of hardcoded constants, with validation to require non-empty arrays.
+- Removes 'integrations', 'nav', and 'persistence' from default scope options to streamline default choices.
+
 ## [0.1.3] (2026-02-08)
 
 Initial release (basically).
@@ -29,5 +43,6 @@ Initial release (basically).
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
 
 <!-- Versions -->
-[unreleased]: https://github.com/dannystewart/commit-gen/compare/v0.1.3...HEAD
+[unreleased]: https://github.com/dannystewart/commit-gen/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/dannystewart/commit-gen/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/dannystewart/commit-gen/releases/tag/v0.1.3
