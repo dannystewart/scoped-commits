@@ -533,6 +533,7 @@ function buildSystemPrompt(opts: {
 		'Scope is REQUIRED. Header MUST be: type(scope): subject',
 		`Subject MUST be imperative mood, concise, and <= ${opts.maxSubjectLength} characters.`,
 		'Body should use third-person singular present tense ("adds", not "add") and may be omitted for trivial changes.',
+		'Do NOT include Markdown formatting, and do NOT manually wrap paragraphs with line breaks.',
 	];
 
 	if (opts.promptHints.length > 0) {
