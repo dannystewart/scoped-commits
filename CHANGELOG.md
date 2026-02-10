@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## [Unreleased]
 
+## [0.2.1] (2026-02-10)
+
+### Added
+
+- Adds "Add Scope (Global)" and "Add Scope (Workspace)" commands for interactively managing commit scopes with input validation, duplicate detection, and stable ordering.
+
 ## [0.2.0] (2026-02-10)
 
 Changed extension name from **Commit Gen** to the more representative **Scoped Commits** to reflect the primary feature.
@@ -43,6 +49,7 @@ Initial release (basically).
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
 
 <!-- Versions -->
-[unreleased]: https://github.com/dannystewart/commit-gen/compare/v0.2.0...HEAD
+[unreleased]: https://github.com/dannystewart/scoped-commits/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/dannystewart/scoped-commits/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/dannystewart/commit-gen/compare/v0.1.3...v0.2.0
-[0.1.3]: https://github.com/dannystewart/commit-gen/releases/tag/v0.1.3
+[0.1.3]: https://github.com/dannystewart/scoped-commits/releases/tag/v0.1.3
