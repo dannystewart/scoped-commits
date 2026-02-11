@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## [Unreleased]
 
+## [0.2.2] (2026-02-11)
+
+### Added
+
+- Adds filtering to status output to show only staged changes when no unstaged changes are present, improving clarity of what will be committed.
+
+### Changed
+
+- Improves performance by skipping unnecessary git operations when no staged changes are detected.
+- Updates user prompt label to clarify when displaying staged-only changes versus all changes.
+
 ## [0.2.1] (2026-02-10)
 
 ### Added
@@ -49,7 +60,8 @@ Initial release (basically).
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
 
 <!-- Versions -->
-[unreleased]: https://github.com/dannystewart/scoped-commits/compare/v0.2.1...HEAD
+[unreleased]: https://github.com/dannystewart/scoped-commits/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/dannystewart/scoped-commits/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/dannystewart/scoped-commits/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/dannystewart/commit-gen/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/dannystewart/scoped-commits/releases/tag/v0.1.3
