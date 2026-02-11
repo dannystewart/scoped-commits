@@ -2,7 +2,7 @@
   "name": "scoped-commits",
   "displayName": "Scoped Commits",
   "description": "Generate AI commit messages with predefined scopes",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "icon": "media/icon.png",
   "publisher": "dannystewart",
   "repository": {
