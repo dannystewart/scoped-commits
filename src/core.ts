@@ -405,17 +405,61 @@ export async function getGitContext(cwd: string, maxDiffChars: number): Promise<
 	}
 
 	const status = await execGit(['status', '--porcelain=v1'], cwd);
-	const stagedDiff = await execGit(['diff', '--staged', '--no-color'], cwd);
-	const usingWorking = stagedDiff.trim().length === 0;
+	const hasStaged = hasStagedChangesFromPorcelainV1(status);
+	const usingWorking = !hasStaged;
+
+	const stagedDiff = hasStaged ? await execGit(['diff', '--staged', '--no-color'], cwd) : '';
 
 	const workingDiff = usingWorking ? await execGit(['diff', '--no-color'], cwd) : '';
 	const untrackedDiff = usingWorking ? await buildUntrackedDiff({ cwd, statusPorcelainV1: status }) : '';
 
 	const diffToUse = usingWorking ? [workingDiff, untrackedDiff].filter(Boolean).join('\n') : stagedDiff;
 	const trimmedDiff = truncateMiddle(diffToUse, maxDiffChars);
-	const statusSummary = status.trim() || '(clean)';
+	const statusToShow = usingWorking ? status : stagedOnlyStatusFromPorcelainV1(status);
+	const statusSummary = statusToShow.trim() || '(clean)';
 
 	return { diff: trimmedDiff, statusSummary, diffKind: usingWorking ? 'working' : 'staged' };
+}
+
+export function hasStagedChangesFromPorcelainV1(statusPorcelainV1: string): boolean {
+	// `git status --porcelain=v1` format is two status columns (XY), then a space, then the path.
+	// X is the index (staged) status; Y is the working tree status.
+	for (const rawLine of statusPorcelainV1.split('\n')) {
+		// Preserve leading spaces (they are significant for the X/Y columns).
+		const line = rawLine.trimEnd();
+		if (line.length < 2) {
+			continue;
+		}
+		if (line[0] === '?' && line[1] === '?') {
+			continue; // untracked (not staged)
+		}
+		const x = line[0];
+		if (x !== ' ') {
+			return true;
+		}
+	}
+	return false;
+}
+
+export function stagedOnlyStatusFromPorcelainV1(statusPorcelainV1: string): string {
+	// Filter status output down to entries that have staged changes (X != ' '), and normalize the
+	// working-tree column to ' ' so downstream consumers don't "see" unstaged changes.
+	const out: string[] = [];
+	for (const rawLine of statusPorcelainV1.split('\n')) {
+		const line = rawLine.trimEnd();
+		if (line.length < 3) {
+			continue;
+		}
+		if (line[0] === '?' && line[1] === '?') {
+			continue;
+		}
+		const x = line[0];
+		if (x === ' ') {
+			continue;
+		}
+		out.push(`${x}  ${line.slice(3)}`);
+	}
+	return out.join('\n');
 }
 
 export function parseUntrackedFilesFromPorcelainV1(statusPorcelainV1: string): string[] {
@@ -537,10 +581,11 @@ function buildSystemPrompt(opts: {
 function buildUserPrompt(opts: { status: string; diff: string; diffKind: 'staged' | 'working' }): string {
 	const changesLabel = opts.diffKind === 'staged' ? 'staged changes' : 'current working tree changes (nothing staged)';
 	const diffLabel = opts.diffKind === 'staged' ? 'Staged diff:' : 'Working tree diff:';
+	const statusLabel = opts.diffKind === 'staged' ? 'Git status (porcelain; staged entries only):' : 'Git status (porcelain):';
 	return [
 		`Generate a commit message for these ${changesLabel}.`,
 		'',
-		'Git status (porcelain):',
+		statusLabel,
 		opts.status,
 		'',
 		diffLabel,

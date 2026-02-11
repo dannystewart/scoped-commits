@@ -4,7 +4,9 @@ import * as assert from 'assert';
 // as well as import your extension to test it
 import * as vscode from 'vscode';
 import {
+	hasStagedChangesFromPorcelainV1,
 	parseCommitHeader,
+	stagedOnlyStatusFromPorcelainV1,
 	parseUntrackedFilesFromPorcelainV1,
 	validateCommitMessage,
 } from '../core';
@@ -69,5 +71,29 @@ suite('Extension Test Suite', () => {
 			'folder with spaces/file name.txt',
 			'dir/',
 		]);
+	});
+
+	test('hasStagedChangesFromPorcelainV1: detects staged changes via index column', () => {
+		assert.strictEqual(hasStagedChangesFromPorcelainV1(''), false);
+		assert.strictEqual(hasStagedChangesFromPorcelainV1(' M src/core.ts'), false); // unstaged only
+		assert.strictEqual(hasStagedChangesFromPorcelainV1('?? new-file.ts'), false); // untracked only
+		assert.strictEqual(hasStagedChangesFromPorcelainV1('M  src/core.ts'), true);
+		assert.strictEqual(hasStagedChangesFromPorcelainV1('MM src/core.ts'), true); // staged + unstaged
+		assert.strictEqual(hasStagedChangesFromPorcelainV1([' M a.ts', 'M  b.ts'].join('\n')), true);
+	});
+
+	test('stagedOnlyStatusFromPorcelainV1: filters and normalizes to staged entries', () => {
+		const status = [
+			' M only-unstaged.ts',
+			'?? untracked.ts',
+			'MM both.ts',
+			'M  staged-only.ts',
+			'R  old name.ts -> new name.ts',
+		].join('\n');
+
+		assert.strictEqual(
+			stagedOnlyStatusFromPorcelainV1(status),
+			['M  both.ts', 'M  staged-only.ts', 'R  old name.ts -> new name.ts'].join('\n'),
+		);
 	});
 });
