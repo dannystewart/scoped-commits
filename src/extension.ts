@@ -65,8 +65,8 @@ async function addScope(target: vscode.ConfigurationTarget): Promise<void> {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-	const generate = vscode.commands.registerCommand('scoped-commits.generateCommitMessage', async () => {
-		await runGenerateCommitMessageCommand();
+	const generate = vscode.commands.registerCommand('scoped-commits.generateCommitMessage', async (...args: unknown[]) => {
+		await runGenerateCommitMessageCommand(args[0]);
 	});
 
 	const addScopeGlobal = vscode.commands.registerCommand('scoped-commits.addScopeGlobal', async () => {

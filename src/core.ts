@@ -33,7 +33,138 @@ function closeActiveNotification(): void {
 	closer?.();
 }
 
-export async function runGenerateCommitMessageCommand(): Promise<void> {
+type ScmInvocationTarget = {
+	folder?: vscode.WorkspaceFolder;
+	folderPath?: string;
+	inputBox?: { value: string };
+};
+
+function isUriLike(value: unknown): value is vscode.Uri {
+	if (!value || typeof value !== 'object') {
+		return false;
+	}
+	const v = value as { scheme?: unknown; fsPath?: unknown; path?: unknown };
+	return typeof v.scheme === 'string' && typeof v.fsPath === 'string' && typeof v.path === 'string';
+}
+
+function extractInputBoxFromScmContext(context: unknown): { value: string } | undefined {
+	if (!context) {
+		return undefined;
+	}
+	if (Array.isArray(context)) {
+		for (const item of context) {
+			const found = extractInputBoxFromScmContext(item);
+			if (found) {
+				return found;
+			}
+		}
+		return undefined;
+	}
+	if (typeof context !== 'object') {
+		return undefined;
+	}
+
+	const c = context as any;
+	const inputBox = c?.inputBox ?? c?.sourceControl?.inputBox ?? c?.repository?.inputBox;
+	if (inputBox && typeof inputBox === 'object' && 'value' in inputBox) {
+		return inputBox as { value: string };
+	}
+	return undefined;
+}
+
+function extractRootUriFromScmContext(context: unknown): vscode.Uri | undefined {
+	const visited = new Set<unknown>();
+
+	const visit = (value: unknown, depth: number): vscode.Uri | undefined => {
+		if (!value || depth > 4) {
+			return undefined;
+		}
+		if (visited.has(value)) {
+			return undefined;
+		}
+
+		if (isUriLike(value)) {
+			return value;
+		}
+
+		if (Array.isArray(value)) {
+			visited.add(value);
+			for (const item of value) {
+				const found = visit(item, depth + 1);
+				if (found) {
+					return found;
+				}
+			}
+			return undefined;
+		}
+
+		if (typeof value !== 'object') {
+			return undefined;
+		}
+
+		visited.add(value);
+		const obj = value as Record<string, unknown>;
+
+		// Common SCM shapes.
+		const direct =
+			(obj['rootUri'] as unknown) ??
+			(obj['resourceUri'] as unknown) ??
+			(obj['uri'] as unknown) ??
+			(obj['sourceControl'] as unknown) ??
+			(obj['repository'] as unknown);
+		const directFound = visit(direct, depth + 1);
+		if (directFound) {
+			return directFound;
+		}
+
+		// Heuristic: scan for *Uri keys (depth-limited).
+		for (const [k, v] of Object.entries(obj)) {
+			if (k === 'rootUri' || k === 'resourceUri' || k === 'uri' || k.endsWith('Uri')) {
+				const found = visit(v, depth + 1);
+				if (found) {
+					return found;
+				}
+			}
+		}
+
+		return undefined;
+	};
+
+	return visit(context, 0);
+}
+
+function pickBestWorkspaceFolderForPath(folderPath: string): vscode.WorkspaceFolder | undefined {
+	const folders = vscode.workspace.workspaceFolders;
+	if (!Array.isArray(folders) || folders.length === 0) {
+		return undefined;
+	}
+
+	let best: vscode.WorkspaceFolder | undefined;
+	let bestLen = -1;
+	for (const wf of folders) {
+		const rootPath = wf.uri.fsPath;
+		if (!rootPath) {
+			continue;
+		}
+		if (folderPath === rootPath || folderPath.startsWith(rootPath + path.sep)) {
+			if (rootPath.length > bestLen) {
+				best = wf;
+				bestLen = rootPath.length;
+			}
+		}
+	}
+	return best ?? folders[0];
+}
+
+function resolveScmInvocationTarget(context: unknown): ScmInvocationTarget {
+	const inputBox = extractInputBoxFromScmContext(context);
+	const rootUri = extractRootUriFromScmContext(context);
+	const folderPath = rootUri?.fsPath;
+	const folder = folderPath ? pickBestWorkspaceFolderForPath(folderPath) : undefined;
+	return { folder, folderPath: folder?.uri.fsPath ?? folderPath, inputBox };
+}
+
+export async function runGenerateCommitMessageCommand(context?: unknown): Promise<void> {
 	closeActiveNotification();
 	await vscode.window.withProgress(
 		{
@@ -43,7 +174,8 @@ export async function runGenerateCommitMessageCommand(): Promise<void> {
 		},
 		async (progress) => {
 			try {
-				const folder = getBestWorkspaceFolder();
+				const target = resolveScmInvocationTarget(context);
+				const folder = target.folder ?? getBestWorkspaceFolder();
 				if (!folder) {
 					throw new UserFacingError('Open a folder/workspace first.');
 				}
@@ -52,7 +184,8 @@ export async function runGenerateCommitMessageCommand(): Promise<void> {
 				const resolvedConfig = loadScopedCommitsConfigFromWorkspace(folder);
 				const settings = getScopedCommitsSettings();
 
-				const git = await getGitContext(folder.uri.fsPath, settings.maxDiffChars);
+				const cwd = target.folderPath ?? folder.uri.fsPath;
+				const git = await getGitContext(cwd, settings.maxDiffChars);
 				if (!git.diff.trim()) {
 					throw new UserFacingError('No changes found.');
 				}
@@ -67,7 +200,7 @@ export async function runGenerateCommitMessageCommand(): Promise<void> {
 				});
 
 				progress.report({ message: 'Inserting…' });
-				const method = await presentCommitMessage(finalMessage);
+				const method = await presentCommitMessage(finalMessage, { preferredInputBox: target.inputBox, folderPath: cwd });
 				const doneMsg =
 					method === 'clipboard'
 						? 'Copied to clipboard.'
@@ -249,14 +382,35 @@ async function callAnthropicOrThrow(opts: { settings: ScopedCommitsSettings; sys
 	}
 }
 
-async function presentCommitMessage(message: string): Promise<'scm' | 'git' | 'clipboard'> {
+async function presentCommitMessage(
+	message: string,
+	opts?: { preferredInputBox?: { value: string }; folderPath?: string },
+): Promise<'scm' | 'git' | 'clipboard'> {
+	const preferred = opts?.preferredInputBox;
+	if (preferred) {
+		try {
+			preferred.value = message;
+			return 'scm';
+		} catch {
+			// Fall through to other options below.
+		}
+	}
+
+	const folderPath = opts?.folderPath;
+	if (folderPath) {
+		const insertedViaGit = await tryInsertViaGitExtension(message, folderPath);
+		if (insertedViaGit) {
+			return 'git';
+		}
+	}
+
 	const inputBox = vscode.scm?.inputBox;
 	if (inputBox) {
 		try {
 			inputBox.value = message;
 			return 'scm';
 		} catch {
-			// Fall through to clipboard/editor fallback below.
+			// Fall through to clipboard fallback below.
 		}
 	}
 
@@ -269,7 +423,7 @@ async function presentCommitMessage(message: string): Promise<'scm' | 'git' | 'c
 	return 'clipboard';
 }
 
-async function tryInsertViaGitExtension(message: string): Promise<boolean> {
+async function tryInsertViaGitExtension(message: string, folderPath?: string): Promise<boolean> {
 	// Cursor/VS Code commonly expose the commit message box via the built-in Git extension API,
 	// even when `vscode.scm.inputBox` is not available.
 	const gitExt = vscode.extensions.getExtension('vscode.git');
@@ -289,9 +443,6 @@ async function tryInsertViaGitExtension(message: string): Promise<boolean> {
 	if (!Array.isArray(repositories) || repositories.length === 0) {
 		return false;
 	}
-
-	const workspaceFolder = getBestWorkspaceFolder();
-	const folderPath = workspaceFolder?.uri.fsPath;
 
 	const matchingRepo = folderPath
 		? pickBestRepoForPath(repositories, folderPath)
