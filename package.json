@@ -89,6 +89,17 @@
           ],
           "description": "Allowed scope/area names. Defaults to a broadly-applicable list; use \"Reset This Setting\" to restore defaults."
         },
+        "scopedCommits.scopeRequirement": {
+          "type": "string",
+          "enum": ["never", "onlyIfNoGoodScope", "requiredUnscoped"],
+          "enumDescriptions": [
+            "Never allow unscoped commits. Header must be type(scope): subject.",
+            "Prefer using an allowed scope when it clearly fits; otherwise omit the scope (type: subject).",
+            "Always omit scope. Header must be type: subject (never include a scope)."
+          ],
+          "default": "never",
+          "description": "Controls whether commit scopes are required, optional, or forbidden."
+        },
         "scopedCommits.promptHints": {
           "type": "array",
           "items": { "type": "string" },

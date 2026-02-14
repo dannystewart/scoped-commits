@@ -36,6 +36,7 @@ suite('Extension Test Suite', () => {
 			allowedTypes: ['feat', 'fix'],
 			allowedScopes: ['core', 'ui'],
 			maxSubjectLength: 80,
+			scopeRequirement: 'never',
 		});
 		assert.deepStrictEqual(ok, { ok: true });
 
@@ -44,6 +45,7 @@ suite('Extension Test Suite', () => {
 			allowedTypes: ['feat', 'fix'],
 			allowedScopes: ['core', 'ui'],
 			maxSubjectLength: 80,
+			scopeRequirement: 'never',
 		});
 		assert.strictEqual(badScope.ok, false);
 	});
@@ -54,8 +56,49 @@ suite('Extension Test Suite', () => {
 			allowedTypes: ['feat', 'fix'],
 			allowedScopes: ['core'],
 			maxSubjectLength: 80,
+			scopeRequirement: 'never',
 		});
 		assert.strictEqual(res.ok, false);
+	});
+
+	test('validateCommitMessage: onlyIfNoGoodScope allows unscoped and scoped', () => {
+		const unscopedOk = validateCommitMessage({
+			message: 'chore: update deps',
+			allowedTypes: ['chore', 'feat'],
+			allowedScopes: ['deps'],
+			maxSubjectLength: 80,
+			scopeRequirement: 'onlyIfNoGoodScope',
+		});
+		assert.deepStrictEqual(unscopedOk, { ok: true });
+
+		const scopedOk = validateCommitMessage({
+			message: 'chore(deps): update deps',
+			allowedTypes: ['chore', 'feat'],
+			allowedScopes: ['deps'],
+			maxSubjectLength: 80,
+			scopeRequirement: 'onlyIfNoGoodScope',
+		});
+		assert.deepStrictEqual(scopedOk, { ok: true });
+	});
+
+	test('validateCommitMessage: requiredUnscoped forbids scopes', () => {
+		const scopedBad = validateCommitMessage({
+			message: 'feat(ui): add button',
+			allowedTypes: ['feat'],
+			allowedScopes: ['ui'],
+			maxSubjectLength: 80,
+			scopeRequirement: 'requiredUnscoped',
+		});
+		assert.strictEqual(scopedBad.ok, false);
+
+		const unscopedOk = validateCommitMessage({
+			message: 'feat: add button',
+			allowedTypes: ['feat'],
+			allowedScopes: ['ui'],
+			maxSubjectLength: 80,
+			scopeRequirement: 'requiredUnscoped',
+		});
+		assert.deepStrictEqual(unscopedOk, { ok: true });
 	});
 
 	test('parseUntrackedFilesFromPorcelainV1: extracts ?? paths (including spaces)', () => {

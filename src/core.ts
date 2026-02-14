@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { anthropicGenerateText, AnthropicError } from './anthropic';
-import { buildSystemPrompt } from './systemPrompt';
+import { buildSystemPrompt, type ScopeRequirement } from './systemPrompt';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -12,6 +12,7 @@ export type ScopedCommitsResolvedConfig = {
 	types: string[];
 	promptHints: string[];
 	maxSubjectLength: number;
+	scopeRequirement: ScopeRequirement;
 };
 
 export type ScopedCommitsSettings = {
@@ -291,6 +292,7 @@ async function generateWithValidationAndRetry(opts: {
 		allowedScopes: opts.config.scopes,
 		maxSubjectLength: opts.config.maxSubjectLength,
 		promptHints: opts.config.promptHints,
+		scopeRequirement: opts.config.scopeRequirement,
 	});
 
 	const baseUser = buildUserPrompt({
@@ -311,6 +313,7 @@ async function generateWithValidationAndRetry(opts: {
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
 		maxSubjectLength: opts.config.maxSubjectLength,
+		scopeRequirement: opts.config.scopeRequirement,
 	});
 
 	const v1 = validateCommitMessage({
@@ -318,6 +321,7 @@ async function generateWithValidationAndRetry(opts: {
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
 		maxSubjectLength: opts.config.maxSubjectLength,
+		scopeRequirement: opts.config.scopeRequirement,
 	});
 	if (v1.ok) {
 		return firstRepaired;
@@ -350,6 +354,7 @@ async function generateWithValidationAndRetry(opts: {
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
 		maxSubjectLength: opts.config.maxSubjectLength,
+		scopeRequirement: opts.config.scopeRequirement,
 	});
 
 	const v2 = validateCommitMessage({
@@ -357,6 +362,7 @@ async function generateWithValidationAndRetry(opts: {
 		allowedTypes: opts.config.types,
 		allowedScopes: opts.config.scopes,
 		maxSubjectLength: opts.config.maxSubjectLength,
+		scopeRequirement: opts.config.scopeRequirement,
 	});
 	if (v2.ok) {
 		return secondRepaired;
@@ -503,9 +509,12 @@ function loadScopedCommitsConfigFromWorkspace(folder: vscode.WorkspaceFolder): S
 	const typesRaw = cfg.get<unknown>('types');
 	const promptHintsRaw = cfg.get<unknown>('promptHints');
 	const maxSubjectLengthRaw = cfg.get<number>('maxSubjectLength');
+	const scopeRequirementRaw = cfg.get<unknown>('scopeRequirement');
+
+	const scopeRequirement = normalizeScopeRequirement(scopeRequirementRaw);
 
 	const scopes = normalizeStringList(scopesRaw);
-	if (scopes.length === 0) {
+	if (scopeRequirement === 'never' && scopes.length === 0) {
 		throw new UserFacingError('`scopedCommits.scopes` is empty. Add at least one scope, or use "Reset This Setting" to restore defaults.');
 	}
 
@@ -521,7 +530,15 @@ function loadScopedCommitsConfigFromWorkspace(folder: vscode.WorkspaceFolder): S
 		types: uniq(types),
 		promptHints,
 		maxSubjectLength: clampInt(maxSubjectLengthRaw ?? 80, 20, 120),
+		scopeRequirement,
 	};
+}
+
+function normalizeScopeRequirement(value: unknown): ScopeRequirement {
+	if (value === 'onlyIfNoGoodScope' || value === 'requiredUnscoped' || value === 'never') {
+		return value;
+	}
+	return 'never';
 }
 
 function normalizeStringOrStringList(value: unknown): string[] {
@@ -747,6 +764,7 @@ export function validateCommitMessage(opts: {
 	allowedTypes: string[];
 	allowedScopes: string[];
 	maxSubjectLength: number;
+	scopeRequirement: ScopeRequirement;
 }): { ok: true } | { ok: false; reason: string } {
 	const lines = opts.message.replace(/\r\n/g, '\n').split('\n');
 	const headerLine = (lines[0] ?? '').trim();
@@ -759,11 +777,22 @@ export function validateCommitMessage(opts: {
 		return { ok: false, reason: `Type "${parsed.type}" is not in allowed types.` };
 	}
 
-	if (!parsed.scope) {
-		return { ok: false, reason: 'Scope is required but missing.' };
-	}
-	if (!opts.allowedScopes.includes(parsed.scope)) {
-		return { ok: false, reason: `Scope "${parsed.scope}" is not in allowed scopes.` };
+	if (opts.scopeRequirement === 'never') {
+		if (!parsed.scope) {
+			return { ok: false, reason: 'Scope is required but missing.' };
+		}
+		if (!opts.allowedScopes.includes(parsed.scope)) {
+			return { ok: false, reason: `Scope "${parsed.scope}" is not in allowed scopes.` };
+		}
+	} else if (opts.scopeRequirement === 'requiredUnscoped') {
+		if (parsed.scope) {
+			return { ok: false, reason: 'Scope is forbidden but present.' };
+		}
+	} else {
+		// onlyIfNoGoodScope
+		if (parsed.scope && !opts.allowedScopes.includes(parsed.scope)) {
+			return { ok: false, reason: `Scope "${parsed.scope}" is not in allowed scopes.` };
+		}
 	}
 
 	if (!parsed.subject) {
@@ -783,12 +812,14 @@ function tryRepairSubjectLengthOnly(opts: {
 	allowedTypes: string[];
 	allowedScopes: string[];
 	maxSubjectLength: number;
+	scopeRequirement: ScopeRequirement;
 }): string {
 	const validation = validateCommitMessage({
 		message: opts.message,
 		allowedTypes: opts.allowedTypes,
 		allowedScopes: opts.allowedScopes,
 		maxSubjectLength: opts.maxSubjectLength,
+		scopeRequirement: opts.scopeRequirement,
 	});
 
 	if (validation.ok) {
