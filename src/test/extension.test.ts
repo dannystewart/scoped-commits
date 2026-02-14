@@ -11,6 +11,7 @@ import {
 	validateCommitMessage,
 	detectProviderFromApiKey,
 } from '../core';
+import { extractScopeFromCommitSubject, normalizeScopeName, topScopesFromCommitSubjects } from '../extension';
 
 suite('Extension Test Suite', () => {
 	vscode.window.showInformationMessage('Start all tests.');
@@ -152,5 +153,37 @@ suite('Extension Test Suite', () => {
 		assert.strictEqual(detectProviderFromApiKey('sk-proj-abc'), 'openai');
 
 		assert.strictEqual(detectProviderFromApiKey('not-a-key'), null);
+	});
+
+	test('extractScopeFromCommitSubject: extracts and normalizes scope', () => {
+		assert.strictEqual(extractScopeFromCommitSubject('feat(ui): add button'), 'ui');
+		assert.strictEqual(extractScopeFromCommitSubject('Fix(Core): correct thing'), 'core');
+		assert.strictEqual(extractScopeFromCommitSubject('chore(deps)!: update'), 'deps');
+		assert.strictEqual(extractScopeFromCommitSubject('feat( UI ): spacing'), 'ui');
+		assert.strictEqual(extractScopeFromCommitSubject('docs: no scope'), null);
+		assert.strictEqual(extractScopeFromCommitSubject('not a conventional commit'), null);
+	});
+
+	test('normalizeScopeName: lowercases and trims', () => {
+		assert.strictEqual(normalizeScopeName(' UI '), 'ui');
+		assert.strictEqual(normalizeScopeName('Core'), 'core');
+		assert.strictEqual(normalizeScopeName('  '), '');
+	});
+
+	test('topScopesFromCommitSubjects: ranks by count and caps topN', () => {
+		const subjects = [
+			'feat(ui): add button',
+			'fix(ui): correct padding',
+			'feat(core): add config',
+			'chore(core): cleanup',
+			'feat(api): add endpoint',
+			'docs: update readme',
+		];
+
+		const ranked = topScopesFromCommitSubjects(subjects, 2);
+		assert.deepStrictEqual(ranked, [
+			{ scope: 'core', count: 2 }, // tie-break alpha: core < ui
+			{ scope: 'ui', count: 2 },
+		]);
 	});
 });

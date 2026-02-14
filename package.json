@@ -24,6 +24,10 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "scoped-commits.populateScopesFromCommits",
+        "title": "Scoped Commits: Populate Scopes from Commits"
+      },
+      {
         "command": "scoped-commits.addScopeGlobal",
         "title": "Scoped Commits: Add Scope (Global)"
       },

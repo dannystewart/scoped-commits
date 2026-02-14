@@ -414,7 +414,7 @@ async function callProviderOrThrow(opts: { settings: ScopedCommitsSettings; syst
 		if (opts.settings.provider === 'anthropic') {
 			if (err instanceof AnthropicError && err.statusCode === 401) {
 				throw new UserFacingError(
-					'Anthropic API key was rejected (401). Check `scopedCommits.apiKey`, legacy `scopedCommits.anthropicApiKey`, or env `SCOPED_COMMITS_API_KEY`/`ANTHROPIC_API_KEY`.',
+					'Anthropic API key was rejected (401). Check `scopedCommits.apiKey`, or env `SCOPED_COMMITS_API_KEY`/`ANTHROPIC_API_KEY`.',
 				);
 			}
 		} else {
@@ -529,16 +529,14 @@ function pickBestRepoForPath(repositories: any[], folderPath: string): any | und
 
 export function getScopedCommitsSettings(): ScopedCommitsSettings {
 	const cfg = vscode.workspace.getConfiguration('scopedCommits');
-	const apiKeyFromUnifiedSettings = cfg.get<string>('apiKey')?.trim() ?? '';
-	const apiKeyFromSettings = cfg.get<string>('anthropicApiKey')?.trim() ?? '';
+	const apiKeyFromSettings = cfg.get<string>('apiKey')?.trim() ?? '';
 	const apiKeyFromUnifiedEnv = (process.env['SCOPED_COMMITS_API_KEY'] ?? '').trim();
-	const apiKeyFromEnv = (process.env['ANTHROPIC_API_KEY'] ?? '').trim();
+	const apiKeyFromAnthropicEnv = (process.env['ANTHROPIC_API_KEY'] ?? '').trim();
 	const apiKeyFromOpenAiEnv = (process.env['OPENAI_API_KEY'] ?? '').trim();
 	const apiKey =
-		apiKeyFromUnifiedSettings ||
 		apiKeyFromSettings ||
 		apiKeyFromUnifiedEnv ||
-		apiKeyFromEnv ||
+		apiKeyFromAnthropicEnv ||
 		apiKeyFromOpenAiEnv;
 	if (!apiKey) {
 		throw new UserFacingError(
